@@ -1,54 +1,95 @@
-from collections import Counter
+import tkinter as tk
+from tkinter import filedialog, messagebox
 from pathlib import Path
-
-FILE = "fasta.txt"  # FASTA file
+from collections import Counter
 
 def read_fasta_sequence(path: str) -> str:
-    """Read a FASTA file and return the concatenated sequence (uppercase, no spaces)."""
     seq_parts = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith(">"):  # skip headers & empty lines
+            if not line or line.startswith(">"):
                 continue
             seq_parts.append(line)
     return "".join(seq_parts).upper()
 
-def main():
-    if not Path(FILE).exists():
-        print(f"File not found: {FILE}")
-        return
+class FastaGUI(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("FASTA Reader")
+        self.geometry("640x480")
 
-    seq = read_fasta_sequence(FILE)
-    if not seq:
-        print("No sequence found (empty file or only headers).")
-        return
+        # Top controls
+        top = tk.Frame(self)
+        top.pack(fill="x", padx=8, pady=8)
 
-    counts = Counter(seq)
-    total = sum(counts.values())
+        self.path_var = tk.StringVar(value="No file selected")
+        tk.Button(top, text="Open FASTA…", command=self.choose_file).pack(side="left")
+        tk.Button(top, text="Analyze", command=self.analyze).pack(side="left", padx=6)
+        tk.Button(top, text="Clear", command=self.clear_output).pack(side="left")
 
-    # Print alphabet (unique symbols)
-    canonical = ["A", "C", "G", "T"]
-    others = sorted([b for b in counts.keys() if b not in canonical])
-    ordered = [b for b in canonical if b in counts] + others
+        tk.Label(top, textvariable=self.path_var, anchor="w").pack(side="left", padx=10)
 
-    print("Alphabet (unique symbols):")
-    print(", ".join(ordered))
-    print()
+        # Output box
+        self.output = tk.Text(self, wrap="word", font=("Consolas", 10))
+        self.output.pack(expand=True, fill="both", padx=8, pady=8)
 
-    print("Relative frequencies (symbol : count / total):")
-    for b in ordered:
-        print(f"{b}: {counts[b]} / {total} = {counts[b]/total:.6f}")
-    print()
+        # Status bar
+        self.status = tk.StringVar(value="Ready")
+        tk.Label(self, textvariable=self.status, anchor="w", relief="sunken").pack(fill="x", side="bottom")
 
-    # GC content (only over A/C/G/T bases)
-    acgt_total = sum(counts.get(b, 0) for b in canonical)
-    gc = counts.get("G", 0) + counts.get("C", 0)
-    if acgt_total > 0:
-        gc_content = gc / acgt_total
-        print(f"GC content (over A/C/G/T only): {gc} / {acgt_total} = {gc_content:.6%}")
-    else:
-        print("GC content: N/A (no A/C/G/T found)")
+        self.file_path = None
+
+    def choose_file(self):
+        path = filedialog.askopenfilename(
+            title="Select FASTA file",
+            filetypes=[("FASTA files", "*.fasta *.fa *.txt"), ("All files", "*.*")]
+        )
+        if path:
+            self.file_path = path
+            self.path_var.set(path)
+            self.status.set("File selected. Click Analyze.")
+
+    def analyze(self):
+        if not self.file_path or not Path(self.file_path).exists():
+            messagebox.showwarning("No file", "Please select a valid FASTA file first.")
+            return
+
+        try:
+            seq = read_fasta_sequence(self.file_path)
+        except Exception as e:
+            messagebox.showerror("Read error", f"Could not read file:\n{e}")
+            return
+
+        self.output.delete("1.0", "end")
+
+        if not seq:
+            self.output.insert("end", "No sequence found (empty file or only headers).\n")
+            self.status.set("Done")
+            return
+
+        counts = Counter(seq)
+        total = sum(counts.values())
+
+        canonical = ["A", "C", "G", "T"]
+        others = sorted([b for b in counts.keys() if b not in canonical])
+        ordered = [b for b in canonical if b in counts] + others
+
+        # Print results
+        self.output.insert("end", "Alphabet (unique symbols):\n")
+        self.output.insert("end", ", ".join(ordered) + "\n\n")
+
+        self.output.insert("end", "Relative frequencies:\n")
+        for b in ordered:
+            frac = counts[b] / total if total else 0.0
+            self.output.insert("end", f"{b}: {counts[b]} / {total} = {frac:.6f} | {frac*100:.3f}%\n")
+        self.output.insert("end", "\n")
+
+        self.status.set("Done")
+
+    def clear_output(self):
+        self.output.delete("1.0", "end")
+        self.status.set("Cleared")
 
 if __name__ == "__main__":
-    main()
+    FastaGUI().mainloop()
